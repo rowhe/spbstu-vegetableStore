@@ -1,10 +1,11 @@
 from django.urls import path
-from .views import CartView, ProductView, ShopView
+from .views import CartView, ProductSingleView, ShopView
 
-# app_name = "store"
+app_name = "store"
 
 urlpatterns = [
     path('', ShopView.as_view(), name="shop"),
     path('cart/', CartView.as_view(), name="cart"),
-    path('product/', ProductView.as_view())
+    path('product/<int:id>/', ProductSingleView.as_view(), name='product')
+
 ]
