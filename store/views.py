@@ -1,5 +1,8 @@
 from django.views import View
 from django.shortcuts import render
+from django.db.models import OuterRef, Subquery, F, ExpressionWrapper, DecimalField, Case, When
+from django.utils import timezone
+from .models import Product, Discount
 
 
 # Create your views here.
@@ -77,70 +80,98 @@ class ProductSingleView(View):
 
 class ShopView(View):
     def get(self, request):
-        context = {'data': [{'name': 'Bell Pepper',
-                             'id': 1,
-                             'discount': 30,
-                             'price_before': 120.00,
-                             'price_after': 80.00,
-                             'url': 'store/images/product-1.jpg'},
-                            {'name': 'Strawberry',
-                             'id': 2,
-                             'discount': None,
-                             'price_before': 120.00,
-                             'url': 'store/images/product-2.jpg'},
-                            {'name': 'Green Beans',
-                             'id': 3,
-                             'discount': None,
-                             'price_before': 120.00,
-                             'url': 'store/images/product-3.jpg'},
-                            {'name': 'Purple Cabbage',
-                             'id': 4,
-                             'discount': None,
-                             'price_before': 120.00,
-                             'url': 'store/images/product-4.jpg'},
-                            {'name': 'Tomatoe',
-                             'id': 5,
-                             'discount': 30,
-                             'price_before': 120.00,
-                             'price_after': 80.00,
-                             'url': 'store/images/product-5.jpg'},
-                            {'name': 'Brocolli',
-                             'id': 6,
-                             'discount': None,
-                             'price_before': 120.00,
-                             'url': 'store/images/product-6.jpg'},
-                            {'name': 'Carrots',
-                             'id': 7,
-                             'discount': None,
-                             'price_before': 120.00,
-                             'url': 'store/images/product-7.jpg'},
-                            {'name': 'Fruit Juice',
-                             'id': 8,
-                             'discount': None,
-                             'price_before': 120.00,
-                             'url': 'store/images/product-8.jpg'},
-                            {'name': 'Onion',
-                             'id': 9,
-                             'discount': 30,
-                             'price_before': 120.00,
-                             'price_after': 80.00,
-                             'url': 'store/images/product-9.jpg'},
-                            {'name': 'Apple',
-                             'id': 10,
-                             'discount': None,
-                             'price_before': 120.00,
-                             'url': 'store/images/product-10.jpg'},
-                            {'name': 'Garlic',
-                             'id': 11,
-                             'discount': None,
-                             'price_before': 120.00,
-                             'url': 'store/images/product-11.jpg'},
-                            {'name': 'Chilli',
-                             'id': 12,
-                             'discount': None,
-                             'price_before': 120.00,
-                             'url': 'store/images/product-12.jpg'},
-                            ]
-                   }
+        discount_value = Case(When(discount__value__gte=0,
+                                   discount__date_begin__lte=timezone.now(),
+                                   discount__date_end__gte=timezone.now(),
+                                   then=F('discount__value')),
+                              default=0,
+                              output_field=DecimalField(max_digits=10, decimal_places=2)
+                              )
+        # Создание запроса на расчёт цены со скидкой
+        price_with_discount = ExpressionWrapper(
+            F('price') * (100.0 - F('discount_value')) / 100.0,
+            output_field=DecimalField(max_digits=10, decimal_places=2)
+        )
 
-        return render(request, 'store/shop.html', context)
+        products = Product.objects.annotate(
+            discount_value=discount_value,
+            # Другой способ через запрос в другую таблицу, однако
+            # без фильтрации по времени действия скидки
+            # discount_value=Subquery(
+            #     Discount.objects.filter(product_id=OuterRef('id')).values(
+            #         'value')
+            # ),
+            price_before=F('price'),
+            price_after=price_with_discount
+        ).values('id', 'name', 'image', 'price_before', 'price_after',
+                 'discount_value')
+        return render(request, 'store/shop.html', {"data": products})
+
+
+        # context = {'data': [{'name': 'Bell Pepper',
+        #                      'id': 1,
+        #                      'discount': 30,
+        #                      'price_before': 120.00,
+        #                      'price_after': 80.00,
+        #                      'url': 'store/images/product-1.jpg'},
+        #                     {'name': 'Strawberry',
+        #                      'id': 2,
+        #                      'discount': None,
+        #                      'price_before': 120.00,
+        #                      'url': 'store/images/product-2.jpg'},
+        #                     {'name': 'Green Beans',
+        #                      'id': 3,
+        #                      'discount': None,
+        #                      'price_before': 120.00,
+        #                      'url': 'store/images/product-3.jpg'},
+        #                     {'name': 'Purple Cabbage',
+        #                      'id': 4,
+        #                      'discount': None,
+        #                      'price_before': 120.00,
+        #                      'url': 'store/images/product-4.jpg'},
+        #                     {'name': 'Tomatoe',
+        #                      'id': 5,
+        #                      'discount': 30,
+        #                      'price_before': 120.00,
+        #                      'price_after': 80.00,
+        #                      'url': 'store/images/product-5.jpg'},
+        #                     {'name': 'Brocolli',
+        #                      'id': 6,
+        #                      'discount': None,
+        #                      'price_before': 120.00,
+        #                      'url': 'store/images/product-6.jpg'},
+        #                     {'name': 'Carrots',
+        #                      'id': 7,
+        #                      'discount': None,
+        #                      'price_before': 120.00,
+        #                      'url': 'store/images/product-7.jpg'},
+        #                     {'name': 'Fruit Juice',
+        #                      'id': 8,
+        #                      'discount': None,
+        #                      'price_before': 120.00,
+        #                      'url': 'store/images/product-8.jpg'},
+        #                     {'name': 'Onion',
+        #                      'id': 9,
+        #                      'discount': 30,
+        #                      'price_before': 120.00,
+        #                      'price_after': 80.00,
+        #                      'url': 'store/images/product-9.jpg'},
+        #                     {'name': 'Apple',
+        #                      'id': 10,
+        #                      'discount': None,
+        #                      'price_before': 120.00,
+        #                      'url': 'store/images/product-10.jpg'},
+        #                     {'name': 'Garlic',
+        #                      'id': 11,
+        #                      'discount': None,
+        #                      'price_before': 120.00,
+        #                      'url': 'store/images/product-11.jpg'},
+        #                     {'name': 'Chilli',
+        #                      'id': 12,
+        #                      'discount': None,
+        #                      'price_before': 120.00,
+        #                      'url': 'store/images/product-12.jpg'},
+        #                     ]
+        #            }
+        #
+        # return render(request, 'store/shop.html', context)
